@@ -116,8 +116,31 @@ class CipherApp:
         return ''.join(result)
     
     # ===== СТОЛБЦОВЫЙ МЕТОД (ИСПРАВЛЕННЫЙ) =====
+    def get_column_order(self, key):
+        """
+        Определяет порядок перестановки столбцов на основе ключа
+        Возвращает список номеров столбцов в порядке их чтения
+        """
+        # Сортируем ключ и получаем порядок
+        key_chars = list(key)
+        # Создаем список пар (символ, исходная позиция)
+        char_positions = [(char, i) for i, char in enumerate(key_chars)]
+        # Сортируем по символу (по алфавиту)
+        char_positions.sort(key=lambda x: x[0])
+        
+        # Создаем порядок перестановки
+        order = [0] * len(key)
+        for new_pos, (_, old_pos) in enumerate(char_positions):
+            order[old_pos] = new_pos
+            
+        return order
+    
     def column_encrypt(self, text, key):
-        """Шифрование столбцовым методом"""
+        """
+        Шифрование столбцовым методом
+        Текст записывается по строкам, а читается по столбцам
+        в порядке, определяемом ключом
+        """
         # Фильтруем текст и ключ
         text = self.filter_eng(text)
         key = self.filter_eng(key)
@@ -139,24 +162,26 @@ class CipherApp:
             col = i % cols
             table[row][col] = ch
         
-        # Сортируем столбцы по ключу с сохранением порядка для одинаковых букв
-        key_with_index = [(key[i], i) for i in range(cols)]
-        key_with_index.sort(key=lambda x: (x[0], x[1]))
+        # Получаем порядок чтения столбцов по ключу
+        col_order = self.get_column_order(key)
         
-        # Получаем порядок столбцов для чтения
-        col_order = [idx for _, idx in key_with_index]
-        
-        # Читаем по столбцам в отсортированном порядке
+        # Читаем текст по столбцам в порядке, определяемом ключом
         result = []
-        for col in col_order:
+        for col in range(cols):
+            # Находим, какой столбец читать следующим
+            target_col = col_order.index(col)
             for row in range(rows):
-                if table[row][col]:
-                    result.append(table[row][col])
+                if table[row][target_col]:
+                    result.append(table[row][target_col])
         
         return ''.join(result)
     
     def column_decrypt(self, text, key):
-        """Дешифрование столбцовым методом"""
+        """
+        Дешифрование столбцового метода
+        Текст записывается по столбцам в порядке ключа,
+        а читается по строкам
+        """
         # Фильтруем текст и ключ
         text = self.filter_eng(text)
         key = self.filter_eng(key)
@@ -172,36 +197,33 @@ class CipherApp:
         rows = (len(text) + cols - 1) // cols
         
         # Определяем размеры столбцов
-        # Полных строк в таблице
-        full_rows = len(text) // cols
-        remainder = len(text) % cols
+        full_cols = len(text) % cols
+        empty_in_last = cols - full_cols if full_cols != 0 else 0
         
-        # Размеры столбцов: первые remainder столбцов имеют размер full_rows + 1, остальные - full_rows
-        col_sizes = [full_rows + 1 if i < remainder else full_rows for i in range(cols)]
+        # Получаем порядок записи столбцов по ключу
+        col_order = self.get_column_order(key)
         
-        # Сортируем ключ для определения порядка столбцов
-        key_with_index = [(key[i], i) for i in range(cols)]
-        key_with_index.sort(key=lambda x: (x[0], x[1]))
-        
-        # Получаем исходные индексы столбцов в отсортированном порядке
-        sorted_indices = [idx for _, idx in key_with_index]
-        
-        # Создаем таблицу для восстановления
+        # Создаем пустую таблицу
         table = [['' for _ in range(cols)] for _ in range(rows)]
         
-        # Заполняем таблицу по столбцам в соответствии с отсортированным порядком
+        # Заполняем таблицу по столбцам в порядке, определяемом ключом
         pos = 0
-        for sorted_idx, original_col in enumerate(sorted_indices):
-            # Определяем размер этого столбца
-            col_size = col_sizes[original_col]
+        for col in range(cols):
+            # Определяем, какой столбец заполнять сейчас
+            target_col = col_order.index(col)
+            
+            # Определяем размер текущего столбца
+            col_size = rows
+            if target_col >= cols - empty_in_last:
+                col_size = rows - 1
             
             # Заполняем столбец
             for row in range(col_size):
                 if pos < len(text):
-                    table[row][original_col] = text[pos]
+                    table[row][target_col] = text[pos]
                     pos += 1
         
-        # Читаем по строкам для получения исходного текста
+        # Читаем результат по строкам
         result = []
         for row in range(rows):
             for col in range(cols):
@@ -374,8 +396,9 @@ class CipherApp:
 
 1. СТОЛБЦОВЫЙ МЕТОД (УЛУЧШЕННЫЙ)
    • Для текста на английском языке
-   • Сортировка столбцов по алфавиту ключа
-   • Корректная обработка повторяющихся букв в ключе
+   • Текст записывается по строкам в таблицу
+   • Столбцы переставляются согласно алфавитному порядку ключа
+   • Чтение происходит по столбцам в новом порядке
    • Игнорируются все символы кроме A-Z
 
 2. АЛГОРИТМ ВИЖЕНЕРА 
@@ -391,7 +414,7 @@ class CipherApp:
    • Работа с текстом любого размера
 
 Автор: Учебная программа
-Версия: 3.1 для Windows (исправлена работа столбцового метода)"""
+Версия: 3.2 для Windows (исправлен столбцовый метод)"""
         
         messagebox.showinfo("О программе", about)
 
