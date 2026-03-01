@@ -24,7 +24,7 @@ class CipherApp:
         
         self.algo = tk.StringVar(value="eng")
         
-        tk.Radiobutton(algo_frame, text="1. Столбцовый метод (улучшенный) - для английского текста", 
+        tk.Radiobutton(algo_frame, text="1. Столбцовый метод (двойная перестановка одним ключом) - для английского текста", 
                       variable=self.algo, value="eng", bg='#f0f0f0', 
                       font=('Arial', 10), anchor='w').pack(fill='x', pady=2)
         
@@ -41,7 +41,7 @@ class CipherApp:
         self.key_entry = tk.Entry(key_frame, width=50, font=('Arial', 10))
         self.key_entry.pack(side='left', padx=10)
         
-        tk.Label(key_frame, text="(только буквы)", bg='#f0f0f0', font=('Arial', 9), fg='gray').pack(side='left')
+        tk.Label(key_frame, text="(будет использован дважды)", bg='#f0f0f0', font=('Arial', 9), fg='gray').pack(side='left')
         
         # Рамка с исходным текстом
         input_frame = tk.LabelFrame(self.root, text=" Исходный текст ", 
@@ -115,43 +115,26 @@ class CipherApp:
                 result.append(c)
         return ''.join(result)
     
-    # ===== СТОЛБЦОВЫЙ МЕТОД (ИСПРАВЛЕННЫЙ) =====
+    # ===== СТОЛБЦОВЫЙ МЕТОД (ОДИН ПРОХОД) =====
     def get_column_order(self, key):
         """
         Определяет порядок перестановки столбцов на основе ключа
-        Возвращает список номеров столбцов в порядке их чтения
+        Возвращает список, где индекс - исходный столбец, значение - новый порядок
         """
-        # Сортируем ключ и получаем порядок
         key_chars = list(key)
-        # Создаем список пар (символ, исходная позиция)
         char_positions = [(char, i) for i, char in enumerate(key_chars)]
-        # Сортируем по символу (по алфавиту)
         char_positions.sort(key=lambda x: x[0])
         
-        # Создаем порядок перестановки
         order = [0] * len(key)
         for new_pos, (_, old_pos) in enumerate(char_positions):
-            order[old_pos] = new_pos
+            order[old_pos] = new_pos + 1
             
         return order
     
-    def column_encrypt(self, text, key):
+    def column_encrypt_once(self, text, key):
         """
-        Шифрование столбцовым методом
-        Текст записывается по строкам, а читается по столбцам
-        в порядке, определяемом ключом
+        Один проход столбцового шифрования
         """
-        # Фильтруем текст и ключ
-        text = self.filter_eng(text)
-        key = self.filter_eng(key)
-        
-        if not key:
-            messagebox.showerror("Ошибка", "Ключ должен содержать английские буквы!")
-            return ""
-        if not text:
-            messagebox.showerror("Ошибка", "Текст не содержит английских букв!")
-            return ""
-        
         cols = len(key)
         rows = (len(text) + cols - 1) // cols
         
@@ -162,37 +145,26 @@ class CipherApp:
             col = i % cols
             table[row][col] = ch
         
-        # Получаем порядок чтения столбцов по ключу
+        # Получаем порядок чтения столбцов
         col_order = self.get_column_order(key)
         
-        # Читаем текст по столбцам в порядке, определяемом ключом
+        # Читаем по столбцам в порядке, определяемом ключом
         result = []
-        for col in range(cols):
-            # Находим, какой столбец читать следующим
-            target_col = col_order.index(col)
-            for row in range(rows):
-                if table[row][target_col]:
-                    result.append(table[row][target_col])
+        for new_col in range(1, cols + 1):
+            # Находим исходный столбец с этим номером
+            for old_col in range(cols):
+                if col_order[old_col] == new_col:
+                    for row in range(rows):
+                        if table[row][old_col]:
+                            result.append(table[row][old_col])
+                    break
         
         return ''.join(result)
     
-    def column_decrypt(self, text, key):
+    def column_decrypt_once(self, text, key):
         """
-        Дешифрование столбцового метода
-        Текст записывается по столбцам в порядке ключа,
-        а читается по строкам
+        Один проход дешифрования столбцового метода
         """
-        # Фильтруем текст и ключ
-        text = self.filter_eng(text)
-        key = self.filter_eng(key)
-        
-        if not key:
-            messagebox.showerror("Ошибка", "Ключ должен содержать английские буквы!")
-            return ""
-        if not text:
-            messagebox.showerror("Ошибка", "Текст не содержит английских букв!")
-            return ""
-        
         cols = len(key)
         rows = (len(text) + cols - 1) // cols
         
@@ -200,30 +172,31 @@ class CipherApp:
         full_cols = len(text) % cols
         empty_in_last = cols - full_cols if full_cols != 0 else 0
         
-        # Получаем порядок записи столбцов по ключу
+        # Получаем порядок столбцов
         col_order = self.get_column_order(key)
         
         # Создаем пустую таблицу
         table = [['' for _ in range(cols)] for _ in range(rows)]
         
-        # Заполняем таблицу по столбцам в порядке, определяемом ключом
+        # Заполняем таблицу по столбцам в порядке ключа
         pos = 0
-        for col in range(cols):
-            # Определяем, какой столбец заполнять сейчас
-            target_col = col_order.index(col)
-            
-            # Определяем размер текущего столбца
-            col_size = rows
-            if target_col >= cols - empty_in_last:
-                col_size = rows - 1
-            
-            # Заполняем столбец
-            for row in range(col_size):
-                if pos < len(text):
-                    table[row][target_col] = text[pos]
-                    pos += 1
+        for new_col in range(1, cols + 1):
+            # Находим исходный столбец
+            for old_col in range(cols):
+                if col_order[old_col] == new_col:
+                    # Определяем размер этого столбца
+                    col_size = rows
+                    if old_col >= cols - empty_in_last:
+                        col_size = rows - 1
+                    
+                    # Заполняем столбец
+                    for row in range(col_size):
+                        if pos < len(text):
+                            table[row][old_col] = text[pos]
+                            pos += 1
+                    break
         
-        # Читаем результат по строкам
+        # Читаем по строкам
         result = []
         for row in range(rows):
             for col in range(cols):
@@ -231,6 +204,36 @@ class CipherApp:
                     result.append(table[row][col])
         
         return ''.join(result)
+    
+    # ===== ДВОЙНАЯ ПЕРЕСТАНОВКА (ОДНИМ КЛЮЧОМ) =====
+    def double_permutation_encrypt(self, text, key):
+        """
+        Двойное шифрование одним ключом
+        """
+        # Первый проход
+        first_pass = self.column_encrypt_once(text, key)
+        print(f"После первого прохода: {first_pass}")
+        
+        # Второй проход (тем же ключом)
+        second_pass = self.column_encrypt_once(first_pass, key)
+        print(f"После второго прохода: {second_pass}")
+        
+        return second_pass
+    
+    def double_permutation_decrypt(self, text, key):
+        """
+        Двойное дешифрование одним ключом
+        (сначала дешифруем второй проход, потом первый)
+        """
+        # Дешифруем второй проход
+        first_pass = self.column_decrypt_once(text, key)
+        print(f"После первого дешифрования: {first_pass}")
+        
+        # Дешифруем первый проход
+        original = self.column_decrypt_once(first_pass, key)
+        print(f"После второго дешифрования: {original}")
+        
+        return original
     
     # ===== АЛГОРИТМ ВИЖЕНЕРА =====
     def vigenere_encrypt(self, text, key):
@@ -248,7 +251,6 @@ class CipherApp:
         # Генерируем ключ
         generated_key = key
         while len(generated_key) < len(text):
-            # Добавляем букву из исходного текста
             next_char = text[len(generated_key) - len(key)]
             generated_key += next_char
         
@@ -274,13 +276,11 @@ class CipherApp:
             messagebox.showerror("Ошибка", "Текст не содержит русских букв!")
             return ""
         
-        # Генерируем ключ
         generated_key = key
         decrypted = []
         
         for i, ch in enumerate(text):
             if i >= len(generated_key):
-                # Добавляем расшифрованную букву
                 generated_key += decrypted[i - len(key)]
             
             text_idx = self.russian.index(ch)
@@ -306,9 +306,20 @@ class CipherApp:
         
         result = ""
         if self.algo.get() == "eng":
-            result = self.column_encrypt(text, key)
+            # Двойная перестановка одним ключом
+            filtered_text = self.filter_eng(text)
+            filtered_key = self.filter_eng(key)
+            
+            if not filtered_key:
+                messagebox.showerror("Ошибка", "Ключ должен содержать английские буквы!")
+                return
+            if not filtered_text:
+                messagebox.showerror("Ошибка", "Текст не содержит английских букв!")
+                return
+                
+            result = self.double_permutation_encrypt(filtered_text, filtered_key)
             if result:
-                self.status.config(text="✓ Текст зашифрован (Столбцовый метод, английский)")
+                self.status.config(text="✓ Текст зашифрован (двойная перестановка, английский)")
         else:
             result = self.vigenere_encrypt(text, key)
             if result:
@@ -333,9 +344,20 @@ class CipherApp:
         
         result = ""
         if self.algo.get() == "eng":
-            result = self.column_decrypt(text, key)
+            # Двойная перестановка одним ключом
+            filtered_text = self.filter_eng(text)
+            filtered_key = self.filter_eng(key)
+            
+            if not filtered_key:
+                messagebox.showerror("Ошибка", "Ключ должен содержать английские буквы!")
+                return
+            if not filtered_text:
+                messagebox.showerror("Ошибка", "Текст не содержит английских букв!")
+                return
+                
+            result = self.double_permutation_decrypt(filtered_text, filtered_key)
             if result:
-                self.status.config(text="✓ Текст расшифрован (Столбцовый метод, английский)")
+                self.status.config(text="✓ Текст расшифрован (двойная перестановка, английский)")
         else:
             result = self.vigenere_decrypt(text, key)
             if result:
@@ -394,19 +416,17 @@ class CipherApp:
 
 Реализованные алгоритмы:
 
-1. СТОЛБЦОВЫЙ МЕТОД (УЛУЧШЕННЫЙ)
+1. СТОЛБЦОВЫЙ МЕТОД (ДВОЙНАЯ ПЕРЕСТАНОВКА ОДНИМ КЛЮЧОМ)
    • Для текста на английском языке
-   • Текст записывается по строкам в таблицу
-   • Столбцы переставляются согласно алфавитному порядку ключа
-   • Чтение происходит по столбцам в новом порядке
-   • Игнорируются все символы кроме A-Z
+   • Текст шифруется дважды одним и тем же ключом
+   • Повышает криптостойкость шифра
+   • Корректная обработка повторяющихся букв в ключе
 
 2. АЛГОРИТМ ВИЖЕНЕРА 
    (с самогенерирующимся ключом)
    • Для текста на русском языке
    • Ключ дополняется символами исходного текста
    • Поддерживается буква Ё
-   • Игнорируются все символы кроме А-Я
 
 Возможности:
    • Загрузка текста из файла
@@ -414,7 +434,7 @@ class CipherApp:
    • Работа с текстом любого размера
 
 Автор: Учебная программа
-Версия: 3.2 для Windows (исправлен столбцовый метод)"""
+Версия: 4.0 (двойная перестановка одним ключом)"""
         
         messagebox.showinfo("О программе", about)
 
